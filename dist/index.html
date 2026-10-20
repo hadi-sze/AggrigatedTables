@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Attribute Collector</title>
+<meta name="description" content="Select attributes from two tables and collect them in one place.">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  :root { color-scheme: light; }
+  body { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  .row-selected { background: #eff6ff; }
+  .row-selected:hover { background: #dbeafe; }
+  .check { appearance:none; width:18px; height:18px; border:1.5px solid #cbd5e1; border-radius:6px; display:grid; place-items:center; cursor:pointer; transition:.15s; }
+  .check:checked { background:#2563eb; border-color:#2563eb; }
+  .check:checked::after { content:""; width:8px; height:5px; border-left:2px solid white; border-bottom:2px solid white; transform:rotate(-45deg) translate(1px,-1px); }
+  .table-card { transition: transform .28s ease, box-shadow .28s ease, border-color .28s ease; }
+  .table-card:hover { transform: translateY(-3px); box-shadow: 0 14px 32px rgba(15,23,42,.08); border-color: #cbd5e1; }
+  .source-row { transition: background-color .22s ease, box-shadow .22s ease; }
+  .source-row:hover { box-shadow: inset 3px 0 0 #93c5fd; }
+  .source-row.row-selected { box-shadow: inset 3px 0 0 #3b82f6; }
+  .row-pop { animation: row-pop .32s cubic-bezier(.2,.8,.2,1) both; }
+  .column-enter { animation: column-enter .38s cubic-bezier(.2,.8,.2,1) both; }
+  .result-reveal { animation: result-reveal .38s cubic-bezier(.2,.8,.2,1) both; }
+  .drop-target { background: #dbeafe !important; box-shadow: inset 0 0 0 2px #60a5fa; }
+  .is-dragging { opacity: .48; }
+  @keyframes row-pop { 0% { filter: brightness(1.08); } 55% { filter: brightness(.96); } 100% { filter: brightness(1); } }
+  @keyframes column-enter { from { opacity: 0; transform: translateY(9px) scale(.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+  @keyframes result-reveal { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  @media (prefers-reduced-motion: reduce) {
+    .table-card, .source-row, .check { transition: none !important; }
+    .row-pop, .column-enter, .result-reveal { animation: none !important; }
+  }
+</style>
+</head>
+<body class="min-h-screen bg-slate-50 text-slate-900">
+<header class="border-b border-slate-200 bg-white">
+  <div class="mx-auto max-w-7xl px-5 sm:px-8 py-5 flex items-center justify-between gap-4">
+    <div class="flex items-center gap-3"><div class="grid h-10 w-10 place-items-center rounded-xl bg-blue-600 text-white shadow-sm"><i data-lucide="layers-3" class="h-5 w-5"></i></div><div><div class="font-bold tracking-tight text-lg leading-tight">Attribute Collector</div><div class="text-xs text-slate-500">Build a unified attribute list</div></div></div>
+    <span class="hidden sm:inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700"><span class="h-2 w-2 rounded-full bg-emerald-500"></span> Interactive workspace</span>
+  </div>
+</header>
+<main class="mx-auto max-w-7xl px-5 sm:px-8 py-9">
+  <div class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div><div class="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-blue-600"><i data-lucide="mouse-pointer-click" class="h-4 w-4"></i> Select and collect</div><h1 class="text-3xl sm:text-4xl font-bold tracking-tight">Choose your attributes</h1><p class="mt-2 max-w-2xl text-slate-500">Select rows from either table. Your choices appear together in the collected attributes table below.</p></div>
+    <button id="clear-all" type="button" class="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"><i data-lucide="rotate-ccw" class="h-4 w-4"></i> Clear selection</button>
+  </div>
+  <div class="grid gap-5 lg:grid-cols-2">
+    <section class="table-card overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm" aria-labelledby="customer-title">
+      <div class="flex items-center justify-between border-b border-slate-100 p-5"><div class="flex items-center gap-3"><div class="grid h-10 w-10 place-items-center rounded-xl bg-violet-50 text-violet-600"><i data-lucide="users-round" class="h-5 w-5"></i></div><div><h2 id="customer-title" class="font-semibold">Customer attributes</h2><p class="text-xs text-slate-500">Profile and contact data</p></div></div><span id="customer-count" class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">0 selected</span></div>
+      <div class="border-b border-slate-100 px-5 py-3"><label class="relative block"><i data-lucide="search" class="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400"></i><input id="customer-search" type="search" placeholder="Search customer attributes" aria-label="Search customer attributes" class="w-full rounded-lg border border-slate-200 py-2 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"></label></div>
+      <div class="overflow-x-auto"><table class="w-full text-left text-sm"><thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th class="w-14 px-5 py-3 font-medium">Select</th><th class="px-3 py-3 font-medium">Attribute</th><th class="px-3 py-3 font-medium">Type</th><th class="px-5 py-3 font-medium">Example</th></tr></thead><tbody id="customer-rows" class="divide-y divide-slate-100"></tbody></table></div>
+    </section>
+    <section class="table-card overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm" aria-labelledby="order-title">
+      <div class="flex items-center justify-between border-b border-slate-100 p-5"><div class="flex items-center gap-3"><div class="grid h-10 w-10 place-items-center rounded-xl bg-amber-50 text-amber-600"><i data-lucide="shopping-bag" class="h-5 w-5"></i></div><div><h2 id="order-title" class="font-semibold">Order attributes</h2><p class="text-xs text-slate-500">Purchase and transaction data</p></div></div><span id="order-count" class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">0 selected</span></div>
+      <div class="border-b border-slate-100 px-5 py-3"><label class="relative block"><i data-lucide="search" class="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400"></i><input id="order-search" type="search" placeholder="Search order attributes" aria-label="Search order attributes" class="w-full rounded-lg border border-slate-200 py-2 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"></label></div>
+      <div class="overflow-x-auto"><table class="w-full text-left text-sm"><thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th class="w-14 px-5 py-3 font-medium">Select</th><th class="px-3 py-3 font-medium">Attribute</th><th class="px-3 py-3 font-medium">Type</th><th class="px-5 py-3 font-medium">Example</th></tr></thead><tbody id="order-rows" class="divide-y divide-slate-100"></tbody></table></div>
+    </section>
+  </div>
+  <div class="my-7 flex items-center justify-center gap-3 text-sm font-medium text-slate-400"><div class="h-px flex-1 bg-slate-200"></div><i data-lucide="arrow-down" class="h-4 w-4"></i><span>Collected in one place</span><div class="h-px flex-1 bg-slate-200"></div></div>
+  <section class="table-card overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm" aria-labelledby="collected-title">
+    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-5"><div class="flex items-center gap-3"><div class="grid h-10 w-10 place-items-center rounded-xl bg-blue-50 text-blue-600"><i data-lucide="list-checks" class="h-5 w-5"></i></div><div><h2 id="collected-title" class="font-semibold">Collected attributes</h2><p class="text-xs text-slate-500">Drag column headers to reorder them</p></div></div><div class="flex items-center gap-2"><span id="total-count" class="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700" aria-live="polite">0 attributes</span><button id="export-csv" type="button" disabled class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"><i data-lucide="download" class="h-4 w-4"></i> Export CSV</button></div></div>
+    <div id="empty-state" class="flex flex-col items-center px-5 py-14 text-center"><div class="mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-slate-100 text-slate-400"><i data-lucide="list-plus" class="h-6 w-6"></i></div><p class="font-semibold">Nothing selected yet</p><p class="mt-1 text-sm text-slate-500">Click any row above to add an attribute here.</p></div>
+    <div id="result-wrap" class="hidden overflow-x-auto"><table class="min-w-full text-left text-sm"><thead id="result-head" class="bg-slate-50"></thead><tbody id="result-rows" class="divide-y divide-slate-100"></tbody></table></div>
+  </section>
+</main>
+<script>
+const groups = {
+  customer: { label: 'Customer', rows: [
+    { id:'customer-id', name:'Customer ID', type:'Number', example:'10482' },
+    { id:'full-name', name:'Full name', type:'Text', example:'Alex Morgan' },
+    { id:'email-address', name:'Email address', type:'Email', example:'alex@example.com' },
+    { id:'phone-number', name:'Phone number', type:'Phone', example:'+1 555 0142' },
+    { id:'signup-date', name:'Signup date', type:'Date', example:'Oct 14, 2026' }
+  ]},
+  order: { label:'Order', rows: [
+    { id:'order-id', name:'Order ID', type:'Number', example:'ORD-2084' },
+    { id:'order-date', name:'Order date', type:'Date', example:'Oct 18, 2026' },
+    { id:'total-amount', name:'Total amount', type:'Currency', example:'$129.00' },
+    { id:'payment-status', name:'Payment status', type:'Status', example:'Paid' },
+    { id:'shipping-method', name:'Shipping method', type:'Text', example:'Express' }
+  ]}
+};
+const all = Object.entries(groups).flatMap(([group, value]) => value.rows.map(row => ({...row, group, source:value.label})));
+const byId = new Map(all.map(row => [row.id, row]));
+const storageKey = 'attribute-collector-selection-v1';
+const validIds = new Set(all.map(row => row.id));
+function loadSelection() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(storageKey) || '[]');
+    return new Set(Array.isArray(saved) ? saved.filter(id => validIds.has(id)) : []);
+  } catch { return new Set(); }
+}
+const selected = loadSelection();
+function saveSelection() {
+  try { localStorage.setItem(storageKey, JSON.stringify([...selected])); } catch { /* Browsers with storage disabled still allow selection in this session. */ }
+}
+function escapeHtml(value) { return String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function chosenRows() { return [...selected].map(id => byId.get(id)).filter(Boolean); }
+function render(changedId = null, reordered = false) {
+  for (const [group, data] of Object.entries(groups)) {
+    const body = document.getElementById(group + '-rows');
+    const query = document.getElementById(group + '-search').value.trim().toLowerCase();
+    const visible = data.rows.filter(row => [row.name, row.type, row.example].some(value => value.toLowerCase().includes(query)));
+    body.innerHTML = visible.length ? visible.map(row => `<tr class="source-row cursor-pointer ${selected.has(row.id) ? 'row-selected' : ''} ${changedId === row.id ? 'row-pop' : ''}" data-id="${row.id}" tabindex="0" aria-label="${escapeHtml(row.name)}, ${selected.has(row.id) ? 'selected' : 'not selected'}. Press Enter to toggle"><td class="px-5 py-3.5"><input class="check" type="checkbox" aria-label="Select ${escapeHtml(row.name)}" data-id="${row.id}" ${selected.has(row.id) ? 'checked' : ''}></td><td class="px-3 py-3.5 font-medium text-slate-800">${escapeHtml(row.name)}</td><td class="px-3 py-3.5 text-slate-500">${escapeHtml(row.type)}</td><td class="px-5 py-3.5 text-slate-500">${escapeHtml(row.example)}</td></tr>`).join('') : '<tr><td colspan="4" class="px-5 py-8 text-center text-slate-500">No matching attributes</td></tr>';
+    const count = data.rows.filter(row => selected.has(row.id)).length;
+    document.getElementById(group + '-count').textContent = count + ' selected';
+  }
+  const chosen = chosenRows();
+  document.getElementById('total-count').textContent = chosen.length + (chosen.length === 1 ? ' attribute' : ' attributes');
+  document.getElementById('export-csv').disabled = chosen.length === 0;
+  const resultWrap = document.getElementById('result-wrap');
+  const wasEmpty = resultWrap.classList.contains('hidden');
+  document.getElementById('empty-state').classList.toggle('hidden', chosen.length > 0);
+  resultWrap.classList.toggle('hidden', chosen.length === 0);
+  if (wasEmpty && chosen.length) { resultWrap.classList.remove('result-reveal'); void resultWrap.offsetWidth; resultWrap.classList.add('result-reveal'); }
+  document.getElementById('result-head').innerHTML = `<tr><th class="sticky left-0 z-10 min-w-28 border-r border-slate-200 bg-slate-50 px-5 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500">Field</th>${chosen.map((row, index) => `<th scope="col" draggable="true" data-column="${row.id}" class="min-w-44 cursor-grab px-4 py-3 text-left hover:bg-blue-50 ${changedId === row.id || reordered ? 'column-enter' : ''}" style="animation-delay:${reordered ? Math.min(index * 35, 210) : 0}ms"><div class="flex items-center justify-between gap-3"><span class="flex items-center gap-1 whitespace-nowrap font-semibold text-slate-800"><i data-lucide="grip-vertical" class="h-4 w-4 text-slate-400"></i>${escapeHtml(row.name)}</span><button type="button" data-remove="${row.id}" aria-label="Remove ${escapeHtml(row.name)}" title="Remove ${escapeHtml(row.name)}" class="rounded-md p-1 text-slate-400 hover:bg-slate-200 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-blue-500"><i data-lucide="x" class="h-4 w-4"></i></button></div><div class="mt-1 flex gap-2 text-xs font-normal"><button type="button" data-move="${row.id}" data-direction="-1" aria-label="Move ${escapeHtml(row.name)} left" ${index === 0 ? 'disabled' : ''} class="text-blue-600 hover:underline disabled:opacity-30">← left</button><button type="button" data-move="${row.id}" data-direction="1" aria-label="Move ${escapeHtml(row.name)} right" ${index === chosen.length - 1 ? 'disabled' : ''} class="text-blue-600 hover:underline disabled:opacity-30">right →</button></div></th>`).join('')}</tr>`;
+  document.getElementById('result-rows').innerHTML = `<tr><th scope="row" class="sticky left-0 z-10 border-r border-slate-100 bg-white px-5 py-3.5 font-medium text-slate-500">Source</th>${chosen.map(row => `<td class="px-4 py-3.5"><span class="inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${row.group === 'customer' ? 'bg-violet-50 text-violet-700' : 'bg-amber-50 text-amber-700'}">${row.source}</span></td>`).join('')}</tr><tr><th scope="row" class="sticky left-0 z-10 border-r border-slate-100 bg-white px-5 py-3.5 font-medium text-slate-500">Type</th>${chosen.map(row => `<td class="px-4 py-3.5 text-slate-600">${escapeHtml(row.type)}</td>`).join('')}</tr><tr><th scope="row" class="sticky left-0 z-10 border-r border-slate-100 bg-white px-5 py-3.5 font-medium text-slate-500">Example</th>${chosen.map(row => `<td class="px-4 py-3.5 whitespace-nowrap text-slate-800">${escapeHtml(row.example)}</td>`).join('')}</tr>`;
+  if (window.lucide) lucide.createIcons();
+}
+function toggle(id) { selected.has(id) ? selected.delete(id) : selected.add(id); saveSelection(); render(id); }
+function moveColumn(id, toIndex) {
+  const ids = [...selected], fromIndex = ids.indexOf(id);
+  if (fromIndex < 0 || toIndex < 0 || toIndex >= ids.length || fromIndex === toIndex) return;
+  ids.splice(fromIndex, 1); ids.splice(toIndex, 0, id);
+  selected.clear(); ids.forEach(value => selected.add(value));
+  saveSelection(); render(null, true);
+}
+document.addEventListener('click', event => {
+  const remove = event.target.closest('[data-remove]'); if (remove) { toggle(remove.dataset.remove); return; }
+  const move = event.target.closest('[data-move]'); if (move) { moveColumn(move.dataset.move, [...selected].indexOf(move.dataset.move) + Number(move.dataset.direction)); return; }
+  if (event.target.matches('input.check')) return;
+  const row = event.target.closest('tr[data-id]'); if (row) toggle(row.dataset.id);
+});
+document.addEventListener('change', event => { if (event.target.matches('input.check')) toggle(event.target.dataset.id); });
+document.addEventListener('keydown', event => { const row = event.target.closest('tr[data-id]'); if (row && (event.key === 'Enter' || event.key === ' ') && event.target === row) { event.preventDefault(); toggle(row.dataset.id); } });
+for (const group of Object.keys(groups)) document.getElementById(group + '-search').addEventListener('input', render);
+let draggedId = null;
+const resultHead = document.getElementById('result-head');
+resultHead.addEventListener('dragstart', event => {
+  const column = event.target.closest('[data-column]');
+  if (!column || event.target.closest('button')) return;
+  draggedId = column.dataset.column;
+  column.classList.add('is-dragging');
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setData('text/plain', draggedId);
+});
+resultHead.addEventListener('dragover', event => {
+  const target = event.target.closest('[data-column]');
+  resultHead.querySelectorAll('.drop-target').forEach(column => column.classList.remove('drop-target'));
+  if (draggedId && target && target.dataset.column !== draggedId) { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; target.classList.add('drop-target'); }
+});
+resultHead.addEventListener('drop', event => {
+  const target = event.target.closest('[data-column]');
+  if (!target || !draggedId) return;
+  event.preventDefault();
+  moveColumn(draggedId, [...selected].indexOf(target.dataset.column));
+  draggedId = null;
+});
+resultHead.addEventListener('dragend', () => { resultHead.querySelectorAll('.drop-target, .is-dragging').forEach(column => column.classList.remove('drop-target', 'is-dragging')); draggedId = null; });
+function csvCell(value) { return '"' + String(value).replace(/"/g, '""') + '"'; }
+document.getElementById('export-csv').addEventListener('click', () => {
+  const rows = chosenRows();
+  if (!rows.length) return;
+  const csv = '\uFEFF' + [rows.map(row => row.name), rows.map(row => row.example)].map(line => line.map(csvCell).join(',')).join('\r\n');
+  const url = URL.createObjectURL(new Blob([csv], { type:'text/csv;charset=utf-8' }));
+  const link = document.createElement('a'); link.href = url; link.download = 'selected-attributes.csv'; link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+});
+document.getElementById('clear-all').addEventListener('click', () => { selected.clear(); saveSelection(); render(); });
+render();
+</script>
+</body>
+</html>
